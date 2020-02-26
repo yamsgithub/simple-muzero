@@ -3,15 +3,7 @@ Board class for the game of TicTacToe.
 Default board size is 3x3.
 Board data:
   1=white(O), -1=black(X), 0=empty
-  first dim is column , 2nd is row:
-     pieces[0][0] is the top left square,
-     pieces[2][0] is the bottom left square,
-Squares are stored and manipulated as (x,y) tuples.
-
-Author: Evgeny Tyurin, github.com/evg-tyurin
-Date: Jan 5, 2018.
-
-Based on the board for the game of Othello by Eric P. Nichols.
+Author: Yamuna Krishnamurthy, github.com/yamsgithub
 
 '''
 # from bkcharts.attributes import color

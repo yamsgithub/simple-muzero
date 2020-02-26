@@ -11,10 +11,8 @@ from Network import *
 """
 NeuralNet for the game of TicTacToe.
 
-Author: Evgeny Tyurin, github.com/evg-tyurin
-Date: Jan 5, 2018.
+Author: Yamuna Krishnamurthy, github.com/yamsgithub
 
-Based on the OthelloNNet by SourKream and Surag Nair.
 """
 
   
