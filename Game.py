@@ -1,24 +1,6 @@
 from typing import List
-
-class Action(object):
-
-  def __init__(self, index: int):
-    self.index = index
-
-  def __hash__(self):
-    return self.index
-
-  def __eq__(self, other):
-    return self.index == other.index
-
-  def __gt__(self, other):
-    return self.index > other.index
-
-class Environment(object):
-  """The environment MuZero is interacting with."""
-  
-  def step(self, action):
-    pass
+from utils import Node, Action, Player, ActionHistory, MuZeroConfig, Environment
+import collections
 
 class Game(object):
   """A single episode of interaction with the environment."""
@@ -86,3 +68,31 @@ class Game(object):
 
   def action_history(self) -> ActionHistory:
     return ActionHistory(self.history, self.action_space_size)
+
+class ReplayBuffer(object):
+
+  def __init__(self, config: MuZeroConfig):
+    self.window_size = config.window_size
+    self.batch_size = config.batch_size
+    self.buffer = []
+
+  def save_game(self, game):
+    if len(self.buffer) > self.window_size:
+      self.buffer.pop(0)
+    self.buffer.append(game)
+
+  def sample_batch(self, num_unroll_steps: int, td_steps: int):
+    games = [self.sample_game() for _ in range(self.batch_size)]
+    game_pos = [(g, self.sample_position(g)) for g in games]
+    return [(g.make_image(i), g.history[i:i + num_unroll_steps],
+             g.make_target(i, num_unroll_steps, td_steps, g.to_play()))
+            for (g, i) in game_pos]
+
+  def sample_game(self) -> Game:
+    # Sample game from buffer either uniformly or according to some priority.
+    return self.buffer[0]
+
+  def sample_position(self, game) -> int:
+    # Sample position from game either uniformly or according to some priority.
+    return -1
+

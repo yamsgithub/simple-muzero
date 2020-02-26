@@ -1,8 +1,7 @@
-class NetworkOutput(typing.NamedTuple):
-  value: float
-  reward: float
-  policy_logits: Dict[Action, float]
-  hidden_state: List[float]
+from utils import Action, MuZeroConfig, NetworkOutput
+from Game import ReplayBuffer
+
+import tensorflow as tf
 
 
 class Network(object):
@@ -23,6 +22,22 @@ class Network(object):
     # How many steps / batches the network has been trained for.
     return 0
 
+class SharedStorage(object):
+
+  def __init__(self):
+    self._networks = {}
+
+  def latest_network(self) -> Network:
+    if self._networks:
+      return self._networks[max(self._networks.keys())]
+    else:
+      # policy -> uniform, value -> 0, reward -> 0
+      return make_uniform_network()
+
+  def save_network(self, step: int, network: Network):
+    self._networks[step] = network
+
+
 
 ####### Part 2: Training #########
 
@@ -31,7 +46,7 @@ def train_network(config: MuZeroConfig, storage: SharedStorage,
   network = Network()
   learning_rate = config.lr_init * config.lr_decay_rate**(
       tf.train.get_global_step() / config.lr_decay_steps)
-  optimizer = tf.train.MomentumOptimizer(learning_rate, config.momentum)
+  optimizer = tf.keras.optimizers.SGD(learning_rate, config.momentum)
 
   for i in range(config.training_steps):
     if i % config.checkpoint_interval == 0:
@@ -41,7 +56,7 @@ def train_network(config: MuZeroConfig, storage: SharedStorage,
   storage.save_network(config.training_steps, network)
 
 
-def update_weights(optimizer: tf.train.Optimizer, network: Network, batch,
+def update_weights(optimizer: tf.keras.optimizers.Optimizer, network: Network, batch,
                    weight_decay: float):
   loss = 0
   for image, actions, targets in batch:
@@ -82,3 +97,6 @@ def scalar_loss(prediction, target) -> float:
 
 ######### End Training ###########
 
+
+def make_uniform_network():
+  return Network()
