@@ -18,7 +18,9 @@ Author: Yamuna Krishnamurthy, github.com/yamsgithub
   
 class TicTacToeNNet(Network):
     def __init__(self, config):
+        super(TicTacToeNNet).__init__()
         # game params
+        self.config = config
         self.board_x = self.board_y = int(math.sqrt(config.action_space_size))
         self.num_channels = 512
         self.dropout = 0.3
@@ -28,7 +30,6 @@ class TicTacToeNNet(Network):
 
         # Representation function
         x_image = Reshape((self.board_x, self.board_y, 1))(self.input_boards)                # batch_size  x board_x x board_y x 1
-        print('\nINPUT INFERENCE ', x_image.shape)
         h_conv1 = Activation('relu')(BatchNormalization(axis=3)(Conv2D(self.num_channels, 3, padding='same')(x_image)))         # batch_size  x board_x x board_y x num_channels
         h_conv2 = Activation('relu')(BatchNormalization(axis=3)(Conv2D(self.num_channels, 3, padding='same')(h_conv1)))         # batch_size  x board_x x board_y x num_channels
         h_conv3 = Activation('relu')(BatchNormalization(axis=3)(Conv2D(self.num_channels, 3, padding='same')(h_conv2)))        # batch_size  x (board_x) x (board_y) x num_channels
@@ -38,8 +39,6 @@ class TicTacToeNNet(Network):
         h_conv4_dense = Dense(self.board_x*self.board_y)(h_conv4_flat)
         
         self.representation = Model(inputs=self.input_boards, outputs=h_conv4_dense)
-        print('\n\n\nOUTPUT REP ', h_conv4_dense.shape)
-
         
         # Dynamics function
         x_action_state_image = Reshape((self.board_x, self.board_y, 2))(self.input_boards)                # batch_size  x board_x x board_y x 1
@@ -52,8 +51,6 @@ class TicTacToeNNet(Network):
         h_conv8_dense = Dense(self.board_x*self.board_y)(h_conv8_flat)
 
         self.dynamics = Model(self.input_boards, h_conv8_dense)
-        print('\n\n\nOUTPUT DYNAMICS ', h_conv8_dense.shape)
-
         
         # Policy function
         h_conv9 = Activation('relu')(BatchNormalization(axis=3)(Conv2D(self.num_channels, 3, padding='same')(x_image)))         # batch_size  x board_x x board_y x num_channels
@@ -66,39 +63,47 @@ class TicTacToeNNet(Network):
 
         self.prediction = Model(inputs=self.input_boards, outputs=[self.pi, self.v])
 
-    def initial_inference(self, image) -> NetworkOutput:
+    def initial_inference(self, image, training=False) -> NetworkOutput:
+        #print(image)
+
         image = image[np.newaxis, :, :]
         
         # representation + prediction function
         # Neural Net
-        print('\nIMAGE ', image)
-        output = self.representation(image)
-        return NetworkOutput(0, 0, {}, output)
+        output = self.representation(image, training=training)
+        
+        return NetworkOutput(0, 0, [1/self.config.action_space_size for i in range(self.config.action_space_size)], output)
 
-    def recurrent_inference(self, hidden_state, action) -> NetworkOutput:
+    def recurrent_inference(self, hidden_state, action, training=False) -> NetworkOutput:
         # dynamics + prediction function
-        #print('\n\nHIDDEN STATE ', hidden_state,'\n', hidden_state.shape)
-        #print('\n\nACTION ', hash(action))
-
         board = int(math.sqrt(hidden_state.shape[1]))
         hidden_state = tf.reshape(hidden_state, (1, board, board))
-        
+
         action_state = np.zeros(board*board)
         action_state[hash(action)] = 1
         action_state = action_state.reshape((1, board, board))
-        
-        data = tf.concat((hidden_state, action_state), -1) #.reshape(2, shape[0], shape[1])
-        hidden_state = self.dynamics(data)
-        #print('\n\n\nHIDDEN STATE SHAPE ', hidden_state.shape)
-        policy, value = self.prediction(hidden_state)
-        policy = np.asarray(policy[0])
-        policy_logits = {Action(a): policy[a] for a in range(0, self.board_x * self.board_y)}
-        return NetworkOutput(value,  0, policy_logits, hidden_state)
+
+        data = tf.concat((hidden_state, action_state), -1) 
+        hidden_state = self.dynamics(data, training=training)
+
+        policy_logits, value = self.prediction(hidden_state, training=training)
+
+        return NetworkOutput(value, 0, policy_logits, hidden_state)
 
     def get_weights(self):
         # Returns the weights of this network.
-        return []
+        print(self.representation.get_weights())
+        rep_weights = self.representation.get_weights()
+        print('\n\nREP WEIGHTS ', len(rep_weights), '\n\n')
+        dyn_weights = self.dynamics.get_weights()
+        print('\n\nDYN WEIGHTS ', len(dyn_weights), '\n\n')
+        pred_weights = self.prediction.get_weights()
+        print('\n\nPRED WEIGHTS ', len(pred_weights), '\n\n')        
+        return rep_weights+dyn_weights+pred_weights
 
+    def get_trainable_weights(self):
+        return self.representation.trainable_weights + self.dynamics.trainable_weights +self.prediction.trainable_weights
+    
     def training_steps(self) -> int:
         # How many steps / batches the network has been trained for.
         return 0

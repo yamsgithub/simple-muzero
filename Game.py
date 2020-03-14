@@ -1,6 +1,7 @@
 from typing import List
 from utils import Node, Action, Player, ActionHistory, MuZeroConfig, Environment
 import collections
+import numpy as np
 
 class Game(object):
   """A single episode of interaction with the environment."""
@@ -52,12 +53,17 @@ class Game(object):
       else:
         value = 0
 
-      for i, reward in enumerate(self.rewards[current_index:bootstrap_index]):
-        value += reward * self.discount**i  # pytype: disable=unsupported-operands
+      if self.rewards:
+        for i, reward in enumerate(self.rewards[current_index:bootstrap_index]):
+          value += reward * self.discount**i  # pytype: disable=unsupported-operands
 
       if current_index < len(self.root_values):
-        targets.append((value, self.rewards[current_index],
-                        self.child_visits[current_index]))
+        if self.rewards:
+          targets.append((value, self.rewards[current_index],
+                          self.child_visits[current_index]))
+        else:
+          targets.append((value, 0,
+                          self.child_visits[current_index]))
       else:
         # States past the end of games are treated as absorbing states.
         targets.append((0, 0, []))
@@ -84,15 +90,22 @@ class ReplayBuffer(object):
   def sample_batch(self, num_unroll_steps: int, td_steps: int):
     games = [self.sample_game() for _ in range(self.batch_size)]
     game_pos = [(g, self.sample_position(g)) for g in games]
-    return [(g.make_image(i), g.history[i:i + num_unroll_steps],
+    #print('SAMPLED GAME POS ', game_pos)
+    # for (g, i) in game_pos:
+    #   print('SAMPLE POS ', i)
+    #   print('OBSERVATIONS ', [b.pieces for b in g.observations])
+    #   print('SAMPLE BATCH EXAMPLE ', g.getCanonicalForm(g.make_image(i)))
+    #   break
+    return [(g.getCanonicalForm(g.make_image(i)), g.history[i:i + num_unroll_steps],
              g.make_target(i, num_unroll_steps, td_steps, g.to_play()))
             for (g, i) in game_pos]
 
   def sample_game(self) -> Game:
     # Sample game from buffer either uniformly or according to some priority.
-    return self.buffer[0]
+    index = np.random.choice(len(self.buffer))
+    return self.buffer[index]
 
   def sample_position(self, game) -> int:
     # Sample position from game either uniformly or according to some priority.
-    return -1
+    return 0
 

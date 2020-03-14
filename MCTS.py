@@ -8,30 +8,27 @@ from Network import *
 # reach a leaf node.
 def run_mcts(config: MuZeroConfig, root: Node, action_history: ActionHistory,
              network: Network):
+  #print('\n\nRUN MCTS\n\n')
   min_max_stats = MinMaxStats(config.known_bounds)
 
   for sim in range(config.num_simulations):
-    #print('\n\n\nSimulation ', sim)
     history = action_history.clone()
     node = root
     search_path = [node]
 
     while node.expanded():
       action, node = select_child(config, node, min_max_stats)
+      # x = np.zeros(history.action_space_size)
+      # x[hash(action)] = 1
+      # print(x.reshape(3,3))
       history.add_action(action)
       search_path.append(node)
-
-    #print('\n\n\nSEARCH PATH ', len(search_path))
-    #print('\n\n\nHISTORY ', history.history)
 
     # Inside the search tree we use the dynamics function to obtain the next
     # hidden state given an action and the previous hidden state.
     parent = search_path[-2]
-    #import numpy as np
-    #print('\n\n\nPARENT NODE ', np.asarray(parent.hidden_state).shape)
     network_output = network.recurrent_inference(parent.hidden_state,
                                                  history.last_action())
-    #print('\n\nEXPAND NODE FROM RUN MCTS ', network_output)
     expand_node(node, history.to_play(), history.action_space(), network_output)
 
     backpropagate(search_path, network_output.value, history.to_play(),

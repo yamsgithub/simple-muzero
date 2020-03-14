@@ -2,7 +2,8 @@ import collections
 import typing
 from typing import Dict, List, Optional
 import math
-
+import numpy as np
+import tensorflow.keras.backend as K
 MAXIMUM_FLOAT_VALUE = float('inf')
 
 KnownBounds = collections.namedtuple('KnownBounds', ['min', 'max'])
@@ -63,11 +64,11 @@ class MuZeroConfig(object):
     self.known_bounds = known_bounds
 
     ### Training
-    self.training_steps = int(1000e3)
-    self.checkpoint_interval = int(1e3)
+    self.training_steps = int(10)
+    self.checkpoint_interval = int(5)
     self.window_size = int(1e6)
     self.batch_size = batch_size
-    self.num_unroll_steps = 5
+    self.num_unroll_steps = 8
     self.td_steps = td_steps
 
     self.weight_decay = 1e-4
@@ -175,29 +176,32 @@ class Environment(object):
 class NetworkOutput(typing.NamedTuple):
   value: float
   reward: float
-  policy_logits: Dict[Action, float]
+  policy_logits: float
   hidden_state: List[float]
 
 # We expand a node using the value, reward and policy prediction obtained from
 # the neural network.
 def expand_node(node: Node, to_play: Player, actions: List[Action],
                 network_output: NetworkOutput):
-    node.to_play = to_play
-    node.hidden_state = network_output.hidden_state
-    import numpy as np
-    #print('\n\n\nNODE HIDDEN STATE ', np.asarray(node.hidden_state).shape)
-    node.reward = network_output.reward
-    if network_output.policy_logits:
-        policy = {a: math.exp(network_output.policy_logits[a]) for a in actions}
-    else:
-        policy = {a: 1/len(actions) for a in actions}
-    policy_sum = sum(policy.values())
-    for action, p in policy.items():
-        node.children[action] = Node(p / policy_sum)
+  node.to_play = to_play
+  node.hidden_state = network_output.hidden_state
+  node.reward = network_output.reward
+  policy = {a: math.exp(K.flatten(network_output.policy_logits)[hash(a)]) for a in actions}
+  policy_sum = sum(policy.values())
+  for action, p in policy.items():
+    node.children[action] = Node(p / policy_sum)
 
 # Stubs to make the typechecker happy.
-def softmax_sample(distribution, temperature: float):
-  return 0, 0
+def softmax_sample(visit_counts, temperature: float):
+
+  N_total = sum([ visit_count[0] for visit_count in visit_counts])
+  distribution = []
+  for visit_count, action in visit_counts:
+    distribution.append((action, visit_count/N_total))
+
+  action = np.random.choice(len(distribution), p=[d[1] for d in distribution])
+  
+  return 0, distribution[action][0]
 
 def launch_job(f, *args):
   f(*args)

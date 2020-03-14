@@ -15,67 +15,55 @@ Author: Yamuna Krishnamurthy, github.com/yamsgithub
 Based on the TicTacToe Game by Surag Nair.
 """
 
-
-
-class TicTacToeEnv(Environment):
-    board = Board()
-    
-    def step(self, action):
-        # if player takes action on board, return next (board,player)
-        # action must be a valid move
-        move = (int(action/self.n), action%self.n)
-        return self.board.execute_move(move, player)
-        
 class TicTacToePlayer(Player):
     player = 1
-    def __init__(self, name):
-        self.player = name
+    def __init__(self, player):
+        self.player = player
 
     def turn(self):
         return self.player
 
     
 class TicTacToeGame(Game):
-    environment = TicTacToeEnv()
-    observations = []
-
     def __init__(self, action_space_size, discount):
         super(TicTacToeGame, self).__init__(action_space_size, discount)
         self.n = int(sqrt(action_space_size))
         self.player = TicTacToePlayer(1)
+        self. observations = [Board(self.n)]
+        self.win = False
 
     def legal_actions(self):
+        b = self.observations[-1].pieces
         moves = []  # stores the legal moves.
-        
-        for i in range(self.n*self.n):
-            moves.append(Action(i))
+        count = 0        
+        for i in range(self.n):
+            for j in range(self.n):
+                if b[i][j] == 0:
+                    moves.append(Action(count))
+                count += 1
         return list(moves)
     
     def make_image(self, state_index: int):
         # Game specific feature planes.
-        if not self.observations:
-            b = Board(self.n)
-            self.observations.append(b)
-            return b.pieces
-        elif state_index < len(self.observations):
-            return self.observations[state_index].pieces
+        return self.observations[state_index].pieces
     
     def terminal(self):
         # return 0 if not ended, 1 if player 1 won, -1 if player 1 lost
         # player = 1
-        if not self.observations:
-            return 0
-        
         b = self.observations[-1]
         player = self.player.player
         
         if b.is_win(player):
+            print('WIN PLAYER 1')
             return 1
         if b.is_win(-player):
+            print('WIN PLAYER -1')
             return -1
         if b.has_legal_moves():
+            print('HAS LEGAL MOVES')
             return 0
-        # draw has a very little value 
+        # draw has a very little value
+        print('DRAW')
         return 1e-4
 
     def getCanonicalForm(self, board):
@@ -99,15 +87,31 @@ class TicTacToeGame(Game):
         return l
     
     def apply(self, action: Action):
-        self.environment.step(action)
+        b = Board(self.n)
+        b.pieces = np.copy(self.observations[-1].pieces)
+        x, y = (int(hash(action)/self.n), hash(action)%self.n)
+        if not b[x][y] == 0:
+            return False
+        b[x][y] = self.player.player
+        self.observations.append(b)
+        reward = 0
+        if self.terminal():
+            reward = 1
+            if self.player.player == 1:
+                self.win = True
+        self.rewards.append(reward)
         self.history.append(action)
+
+        return True
 
     def stringRepresentation(self, board):
         # 8x8 numpy array (canonical board)
         return board.tostring()
 
     def to_play(self):
-        return TicTacToePlayer(-1 * self.player.player)
+        player = self.player.player
+        self.player = TicTacToePlayer(-player)
+        return player
 
     @staticmethod
     def display(board):
@@ -164,7 +168,8 @@ class TicTacToeConfig(MuZeroConfig):
                                               lr_decay_steps = lr_decay_steps,
                                               visit_softmax_temperature_fn = visit_softmax_temperature_fn)
     def new_game(self):
-        return TicTacToeGame(self.action_space_size, self.discount)
+        game = TicTacToeGame(self.action_space_size, self.discount)
+        return game
 
 
 def make_tictactoe_config(board_size) -> MuZeroConfig:
@@ -175,13 +180,13 @@ def make_tictactoe_config(board_size) -> MuZeroConfig:
             return 0.0  # Play according to the max.
         
     return TicTacToeConfig(action_space_size=(board_size*board_size),
-                           max_moves=200,
+                           max_moves=30,
                            discount=0.1,
                            dirichlet_alpha=0.3,
                            num_simulations=25,
                            batch_size = 64,
-                           td_steps = 100,
-                           num_actors=5,
+                           td_steps = (board_size*board_size)-1,
+                           num_actors=3,
                            lr_init=0.001,
                            lr_decay_steps=5,
                            visit_softmax_temperature_fn = visit_softmax_temperature)

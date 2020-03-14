@@ -7,6 +7,7 @@ from utils import launch_job, expand_node, Node
 from tictactoe.keras.TicTacToeNNet import TicTacToeNNet as GameNetwork
 from tictactoe.keras.TicTacToeNNet import TicTacToeSharedStorage as GameSharedStorage
 from Game import ReplayBuffer
+from Network import train_network
 from MCTS import *
 
 # MuZero training is split into two independent parts: Network training and
@@ -21,7 +22,7 @@ def muzero(config: MuZeroConfig):
   for _ in range(config.num_actors):
     launch_job(run_selfplay, config, storage, replay_buffer)
 
-  train_network(config, storage, replay_buffer)
+  train_network(config, storage, replay_buffer, GameNetwork(config))
 
   return storage.latest_network()
 
@@ -30,33 +31,49 @@ def muzero(config: MuZeroConfig):
 # writing it to a shared replay buffer.
 def run_selfplay(config: MuZeroConfig, storage: SharedStorage,
                  replay_buffer: ReplayBuffer):
-  while True:
+  wins = 0
+  for _ in range(5):
     network = storage.latest_network()
     game = play_game(config, network)
+    wins += game.win
     replay_buffer.save_game(game)
-
+  print('GAMES WON ', wins)
 
 # Each game is produced by starting at the initial board position, then
 # repeatedly executing a Monte Carlo Tree Search to generate moves until the end
 # of the game is reached.
 def play_game(config: MuZeroConfig, network: GameNetwork) -> Game:
-    game = config.new_game()
-    while not game.terminal() and len(game.history) < config.max_moves:
-        # At the root of the search tree we use the representation function to
-        # obtain a hidden state given the current observation.
-        root = Node(0)
-        current_observation = game.make_image(-1)
-        expand_node(root, game.to_play(), game.legal_actions(),
-                    network.initial_inference(game.getCanonicalForm(current_observation)))
-        add_exploration_noise(config, root)
-        
-        # We then run a Monte Carlo Tree Search using only action sequences and the
-        # model learned by the network.
-        run_mcts(config, root, game.action_history(), network)
-        action = select_action(config, len(game.history), root, network)
-        game.apply(action)
-        game.store_search_statistics(root)
-    return game
+  game = config.new_game()
+  while game.terminal() == 0 and len(game.history) < config.max_moves:
+    # At the root of the search tree we use the representation function to
+    # obtain a hidden state given the current observation.
+    root = Node(0)
+    current_observation = game.make_image(-1)
+    print(game.getCanonicalForm(current_observation))
+    curr_player = game.to_play()
+    print('PLAYER ', curr_player)
+    expand_node(root, curr_player, game.legal_actions(),
+                network.initial_inference(game.getCanonicalForm(current_observation)))
+    add_exploration_noise(config, root)
+    
+    # We then run a Monte Carlo Tree Search using only action sequences and the
+    # model learned by the network.
+    run_mcts(config, root, game.action_history(), network)
+    action = select_action(config, len(game.history), root, network)
+    game.apply(action)
+    game.store_search_statistics(root)
+  print(game.getCanonicalForm(game.make_image(-1)))
+  # test_game = config.new_game()
+  # print('SIMULATION BEGIN...')
+  # for action in game.action_history().history:
+  #   current_observation = test_game.make_image(-1)
+  #   print(test_game.getCanonicalForm(current_observation))
+  #   if not test_game.apply(action):
+  #     print('\n\nILLEGAL MOVE\n\n')
+  #     break
+  #   next_player = test_game.to_play()
+  # print('SIMULATION END...')
+  return game
 
 
 def select_action(config: MuZeroConfig, num_moves: int, node: Node,
@@ -81,6 +98,7 @@ def add_exploration_noise(config: MuZeroConfig, node: Node):
     node.children[a].prior = node.children[a].prior * (1 - frac) + n * frac
 
 if __name__=="__main__":
-    config = make_tictactoe_config(3)
+  config = make_tictactoe_config(5)
+  for episode in range(5):
     muzero(config)
     
